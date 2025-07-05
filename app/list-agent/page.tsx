@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -58,7 +58,7 @@ export default function ListAgentPage() {
     tags: [] as string[],
 
     // Media
-    images: [] as string[],
+    images: [] as (string | File)[],
     videoUrl: "",
     demoUrl: "",
 
@@ -91,9 +91,66 @@ export default function ListAgentPage() {
 
   const [newTag, setNewTag] = useState("")
   const [dragActive, setDragActive] = useState(false)
+  const [newImageUrl, setNewImageUrl] = useState("")
+  const [errors, setErrors] = useState<Record<string, string | undefined>>({})
 
   const handleInputChange = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
+    setErrors((prev) => ({ ...prev, [field]: undefined }))
+  }
+
+  // Image upload handler
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+    const fileArr = Array.from(files)
+    // Only allow up to 5 images
+    if (formData.images.length + fileArr.length > 5) {
+      setErrors((prev) => ({ ...prev, images: "You can upload up to 5 images." }))
+      return
+    }
+    handleInputChange("images", [...formData.images, ...fileArr])
+  }
+
+  // Helper to upload images to Supabase Storage and return public URLs
+  async function uploadImagesToSupabase(images: File[]): Promise<string[]> {
+    const { supabase } = await import("@/lib/supabaseClient")
+    const urls: string[] = []
+    for (const file of images) {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`
+      const { data, error } = await supabase.storage.from("agent-images").upload(fileName, file)
+      if (error) {
+        throw new Error("Image upload failed: " + error.message)
+      }
+      // Get public URL
+      const { data: publicUrlData } = supabase.storage.from("agent-images").getPublicUrl(fileName)
+      urls.push(publicUrlData.publicUrl)
+    }
+    return urls
+  }
+  const removeImage = (idx: number) => {
+    handleInputChange(
+      "images",
+      formData.images.filter((_, i) => i !== idx)
+    )
+  }
+
+  // Add image by URL
+  const addImageUrl = () => {
+    const url = newImageUrl.trim()
+    if (!url) return
+    if (formData.images.length >= 5) {
+      setErrors((prev) => ({ ...prev, images: "You can upload up to 5 images." }))
+      return
+    }
+    // Basic URL validation
+    if (!/^https?:\/\//.test(url)) {
+      setErrors((prev) => ({ ...prev, images: "Please enter a valid image URL (http/https)." }))
+      return
+    }
+    handleInputChange("images", [...formData.images, url])
+    setNewImageUrl("")
   }
 
   const addTag = () => {
@@ -110,8 +167,37 @@ export default function ListAgentPage() {
     )
   }
 
+
+  // Validation for each step
+  const validateStep = () => {
+    let stepErrors: Record<string, string> = {}
+    if (currentStep === 1) {
+      if (!formData.name) stepErrors.name = "Agent name is required."
+      if (!formData.category) stepErrors.category = "Category is required."
+      if (!formData.shortDescription) stepErrors.shortDescription = "Short description is required."
+      if (!formData.longDescription) stepErrors.longDescription = "Detailed description is required."
+    }
+    if (currentStep === 2) {
+      if (!formData.images.length) stepErrors.images = "At least one image is required."
+    }
+    if (currentStep === 3) {
+      if (!formData.selectedFeatures.length) stepErrors.selectedFeatures = "Select at least one feature."
+    }
+    if (currentStep === 4) {
+      if (!formData.pricingModel) stepErrors.pricingModel = "Select a pricing model."
+      if (formData.pricingModel === "one-time" && !formData.price) stepErrors.price = "Price is required."
+    }
+    if (currentStep === 5) {
+      if (!formData.companyName) stepErrors.companyName = "Company name is required."
+      if (!formData.contactEmail) stepErrors.contactEmail = "Contact email is required."
+    }
+    setErrors(stepErrors)
+    return Object.keys(stepErrors).length === 0
+  }
+
   const handleNext = () => {
-    if (currentStep < 5) {
+    if (currentStep < 6) {
+      if (!validateStep()) return
       setCurrentStep(currentStep + 1)
     }
   }
@@ -122,9 +208,50 @@ export default function ListAgentPage() {
     }
   }
 
-  const handleSubmit = () => {
-    console.log("Agent listing submitted:", formData)
-    // Handle form submission
+  const handleSubmit = async () => {
+    if (!validateStep()) return
+    try {
+      // Upload images to Supabase Storage and get URLs
+      const imageFiles = formData.images.filter((img) => img instanceof File) as File[]
+      const imageUrlsFromForm = formData.images.filter((img) => typeof img === "string") as string[]
+      let uploadedImageUrls: string[] = []
+      if (imageFiles.length > 0) {
+        uploadedImageUrls = await uploadImagesToSupabase(imageFiles)
+      }
+      // Combine uploaded file URLs and direct image URLs
+      const allImageUrls = [...uploadedImageUrls, ...imageUrlsFromForm]
+      // Prepare agent data for Supabase
+      const agentData = {
+        name: formData.name,
+        category: formData.category,
+        short_description: formData.shortDescription,
+        long_description: formData.longDescription,
+        tags: formData.tags,
+        video_url: formData.videoUrl,
+        demo_url: formData.demoUrl,
+        features: formData.selectedFeatures,
+        specifications: formData.specifications,
+        pricing_model: formData.pricingModel,
+        price: formData.price,
+        free_trial_days: formData.freeTrialDays,
+        company_name: formData.companyName,
+        contact_email: formData.contactEmail,
+        support_email: formData.supportEmail,
+        website: formData.website,
+        images: allImageUrls,
+        status: "pending",
+        created_at: new Date().toISOString(),
+      }
+      const { error } = await (await import("@/lib/supabaseClient")).supabase.from("agents").insert([agentData])
+      if (error) {
+        setErrors({ submit: error.message })
+        return
+      }
+      alert("Agent submitted for review!")
+      // Optionally reset form or redirect
+    } catch (err: any) {
+      setErrors({ submit: err.message || "Submission failed" })
+    }
   }
 
   const steps = [
@@ -132,7 +259,8 @@ export default function ListAgentPage() {
     { number: 2, title: "Media & Demo", icon: <ImageIcon className="h-4 w-4" /> },
     { number: 3, title: "Features & Specs", icon: <Code className="h-4 w-4" /> },
     { number: 4, title: "Pricing", icon: <TrendingUp className="h-4 w-4" /> },
-    { number: 5, title: "Review & Submit", icon: <CheckCircle className="h-4 w-4" /> },
+    { number: 5, title: "Seller Info", icon: <Rocket className="h-4 w-4" /> },
+    { number: 6, title: "Review & Submit", icon: <CheckCircle className="h-4 w-4" /> },
   ]
 
   return (
@@ -303,24 +431,72 @@ export default function ListAgentPage() {
                     <p className="text-slate-600">Add images, videos, and demos to help users understand your agent</p>
                   </div>
 
-                  {/* Image Upload */}
-                  <div className="space-y-3">
-                    <Label className="text-slate-700 font-medium">Agent Images *</Label>
-                    <div
-                      className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-                        dragActive ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-slate-400"
-                      }`}
-                      onDragEnter={() => setDragActive(true)}
-                      onDragLeave={() => setDragActive(false)}
-                    >
-                      <Upload className="h-10 w-10 text-slate-400 mx-auto mb-3" />
-                      <p className="text-slate-600 mb-2">Drag and drop images here, or click to browse</p>
-                      <p className="text-sm text-slate-500">PNG, JPG up to 5MB each</p>
-                      <Button type="button" variant="outline" className="mt-3 bg-transparent">
-                        Choose Files
-                      </Button>
+              {/* Image Upload & Image URL */}
+              <div className="space-y-3">
+                <Label className="text-slate-700 font-medium">Agent Images *</Label>
+                <div
+                  className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                    dragActive ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-slate-400"
+                  }`}
+                  onDragEnter={() => setDragActive(true)}
+                  onDragLeave={() => setDragActive(false)}
+                >
+                  <Upload className="h-10 w-10 text-slate-400 mx-auto mb-3" />
+                  <p className="text-slate-600 mb-2">Drag and drop images here, or click to browse</p>
+                  <p className="text-sm text-slate-500">PNG, JPG up to 5MB each. Max 5 images.</p>
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg"
+                    multiple
+                    className="hidden"
+                    id="agent-images-upload"
+                    onChange={handleImageUpload}
+                  />
+                  <label htmlFor="agent-images-upload">
+                    <Button type="button" variant="outline" className="mt-3 bg-transparent cursor-pointer">
+                      Choose Files
+                    </Button>
+                  </label>
+                  {errors.images && <div className="text-red-500 text-xs mt-2">{errors.images}</div>}
+                </div>
+                {/* Add Image by URL */}
+                <div className="flex gap-2 mt-2">
+                  <Input
+                    type="url"
+                    placeholder="Paste image URL (https://...)"
+                    value={newImageUrl}
+                    onChange={(e) => setNewImageUrl(e.target.value)}
+                    className="flex-1 border-slate-200 focus:border-blue-500"
+                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), addImageUrl())}
+                  />
+                  <Button
+                    type="button"
+                    onClick={addImageUrl}
+                    className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {/* Image previews */}
+                <div className="flex flex-wrap gap-3 mt-2">
+                  {formData.images.map((img, idx) => (
+                    <div key={idx} className="relative w-20 h-20 rounded overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center">
+                      {typeof img === "string" ? (
+                        <img src={img} alt="Agent" className="object-cover w-full h-full" />
+                      ) : (
+                        <img src={URL.createObjectURL(img)} alt="Agent" className="object-cover w-full h-full" />
+                      )}
+                      <button
+                        type="button"
+                        className="absolute top-1 right-1 bg-white rounded-full p-0.5 hover:bg-red-100"
+                        onClick={() => removeImage(idx)}
+                      >
+                        <X className="h-4 w-4 text-red-500" />
+                      </button>
                     </div>
-                  </div>
+                  ))}
+                </div>
+              </div>
 
                   {/* Video & Demo URLs */}
                   <div className="grid md:grid-cols-2 gap-4">
@@ -491,8 +667,72 @@ export default function ListAgentPage() {
                 </div>
               )}
 
-              {/* Step 5: Review & Submit */}
+              {/* Step 5: Seller Info */}
               {currentStep === 5 && (
+                <div className="space-y-6">
+                  <div className="text-center mb-6">
+                    <h2 className="text-xl font-bold text-slate-800 mb-2">Seller Information</h2>
+                    <p className="text-slate-600">Tell us about your company and how users can reach you</p>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="companyName" className="text-slate-700 font-medium">
+                        Company Name *
+                      </Label>
+                      <Input
+                        id="companyName"
+                        value={formData.companyName}
+                        onChange={(e) => handleInputChange("companyName", e.target.value)}
+                        placeholder="e.g., Tech Innovators Ltd."
+                        className="border-slate-200 focus:border-blue-500"
+                      />
+                      {errors.companyName && <div className="text-red-500 text-xs">{errors.companyName}</div>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="contactEmail" className="text-slate-700 font-medium">
+                        Contact Email *
+                      </Label>
+                      <Input
+                        id="contactEmail"
+                        value={formData.contactEmail}
+                        onChange={(e) => handleInputChange("contactEmail", e.target.value)}
+                        placeholder="contact@company.com"
+                        className="border-slate-200 focus:border-blue-500"
+                      />
+                      {errors.contactEmail && <div className="text-red-500 text-xs">{errors.contactEmail}</div>}
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="supportEmail" className="text-slate-700 font-medium">
+                        Support Email
+                      </Label>
+                      <Input
+                        id="supportEmail"
+                        value={formData.supportEmail}
+                        onChange={(e) => handleInputChange("supportEmail", e.target.value)}
+                        placeholder="support@company.com"
+                        className="border-slate-200 focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="website" className="text-slate-700 font-medium">
+                        Website
+                      </Label>
+                      <Input
+                        id="website"
+                        value={formData.website}
+                        onChange={(e) => handleInputChange("website", e.target.value)}
+                        placeholder="https://company.com"
+                        className="border-slate-200 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 6: Review & Submit */}
+              {currentStep === 6 && (
                 <div className="space-y-6">
                   <div className="text-center mb-6">
                     <h2 className="text-xl font-bold text-slate-800 mb-2">Review Your Listing</h2>
@@ -509,18 +749,13 @@ export default function ListAgentPage() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-2 text-sm pt-0">
-                        <div>
-                          <strong>Name:</strong> {formData.name || "Not set"}
-                        </div>
-                        <div>
-                          <strong>Category:</strong> {formData.category || "Not set"}
-                        </div>
-                        <div>
-                          <strong>Tags:</strong> {formData.tags.length} tags
-                        </div>
+                        <div><strong>Name:</strong> {formData.name || "Not set"}</div>
+                        <div><strong>Category:</strong> {formData.category || "Not set"}</div>
+                        <div><strong>Tags:</strong> {formData.tags.length ? formData.tags.join(", ") : "None"}</div>
+                        <div><strong>Short Desc:</strong> {formData.shortDescription || "Not set"}</div>
+                        <div><strong>Long Desc:</strong> {formData.longDescription || "Not set"}</div>
                       </CardContent>
                     </Card>
-
                     <Card className="border border-slate-200 bg-gradient-to-br from-emerald-50 to-teal-50">
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base flex items-center gap-2">
@@ -529,18 +764,27 @@ export default function ListAgentPage() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-2 text-sm pt-0">
-                        <div>
-                          <strong>Model:</strong> {formData.pricingModel || "Not set"}
-                        </div>
-                        <div>
-                          <strong>Price:</strong> {formData.price ? `₦${formData.price}` : "Not set"}
-                        </div>
-                        <div>
-                          <strong>Features:</strong> {formData.selectedFeatures.length} selected
-                        </div>
+                        <div><strong>Model:</strong> {formData.pricingModel || "Not set"}</div>
+                        <div><strong>Price:</strong> {formData.price ? `₦${formData.price}` : "Not set"}</div>
+                        <div><strong>Features:</strong> {formData.selectedFeatures.length ? formData.selectedFeatures.join(", ") : "None"}</div>
+                        <div><strong>Specs:</strong> {Object.entries(formData.specifications).length ? Object.entries(formData.specifications).map(([k, v]) => `${k}: ${v}`).join(", ") : "None"}</div>
                       </CardContent>
                     </Card>
                   </div>
+                  <Card className="border border-slate-200 bg-gradient-to-br from-yellow-50 to-orange-50">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Rocket className="h-4 w-4 text-yellow-600" />
+                        Seller Info
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm pt-0">
+                      <div><strong>Company:</strong> {formData.companyName || "Not set"}</div>
+                      <div><strong>Contact Email:</strong> {formData.contactEmail || "Not set"}</div>
+                      <div><strong>Support Email:</strong> {formData.supportEmail || "Not set"}</div>
+                      <div><strong>Website:</strong> {formData.website || "Not set"}</div>
+                    </CardContent>
+                  </Card>
 
                   {/* Terms Agreement */}
                   <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
@@ -574,27 +818,19 @@ export default function ListAgentPage() {
                     </h3>
                     <div className="space-y-2 text-sm text-blue-700">
                       <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center text-xs font-bold text-blue-600">
-                          1
-                        </div>
+                        <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center text-xs font-bold text-blue-600">1</div>
                         <span>Your agent will be reviewed by our team (usually within 24-48 hours)</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center text-xs font-bold text-blue-600">
-                          2
-                        </div>
+                        <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center text-xs font-bold text-blue-600">2</div>
                         <span>You'll receive an email with feedback or approval notification</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center text-xs font-bold text-blue-600">
-                          3
-                        </div>
+                        <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center text-xs font-bold text-blue-600">3</div>
                         <span>Once approved, your agent goes live on the marketplace</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center text-xs font-bold text-blue-600">
-                          4
-                        </div>
+                        <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center text-xs font-bold text-blue-600">4</div>
                         <span>Start earning from sales with weekly payouts</span>
                       </div>
                     </div>
@@ -613,7 +849,7 @@ export default function ListAgentPage() {
                   Back
                 </Button>
 
-                {currentStep < 5 ? (
+                {currentStep < 6 ? (
                   <Button
                     onClick={handleNext}
                     className="px-6 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"

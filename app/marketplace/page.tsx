@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -12,164 +12,7 @@ import Header from "@/components/header"
 import Footer from "@/components/footer"
 import Link from "next/link"
 
-const agents = [
-  {
-    id: 1,
-    name: "CustomerCare Pro",
-    category: "Customer Service",
-    rating: 4.9,
-    reviews: 234,
-    price: 15000,
-    image: "/placeholder.svg?height=200&width=300",
-    description: "24/7 customer support automation with Nigerian context understanding",
-    tags: ["AI", "Support", "Automation"],
-    seller: "TechSolutions NG",
-    featured: true,
-  },
-  {
-    id: 2,
-    name: "SalesBot Nigeria",
-    category: "Sales Automation",
-    rating: 4.8,
-    reviews: 189,
-    price: 25000,
-    image: "/placeholder.svg?height=200&width=300",
-    description: "Lead generation and conversion optimization for Nigerian markets",
-    tags: ["Sales", "CRM", "Lead Gen"],
-    seller: "SalesForce Africa",
-    featured: true,
-  },
-  {
-    id: 3,
-    name: "ContentCreator AI",
-    category: "Content Creation",
-    rating: 4.7,
-    reviews: 156,
-    price: 12000,
-    image: "/placeholder.svg?height=200&width=300",
-    description: "Generate engaging content in English, Pidgin, and local languages",
-    tags: ["Content", "Writing", "Multilingual"],
-    seller: "Creative Minds",
-    featured: false,
-  },
-  {
-    id: 4,
-    name: "DataAnalyzer Pro",
-    category: "Data Analysis",
-    rating: 4.6,
-    reviews: 98,
-    price: 30000,
-    image: "/placeholder.svg?height=200&width=300",
-    description: "Advanced data analytics and insights for business intelligence",
-    tags: ["Analytics", "BI", "Reports"],
-    seller: "DataCorp Nigeria",
-    featured: false,
-  },
-  {
-    id: 5,
-    name: "MarketingBot",
-    category: "Marketing",
-    rating: 4.5,
-    reviews: 145,
-    price: 18000,
-    image: "/placeholder.svg?height=200&width=300",
-    description: "Automated marketing campaigns and social media management",
-    tags: ["Marketing", "Social Media", "Campaigns"],
-    seller: "Digital Marketing Pro",
-    featured: false,
-  },
-  {
-    id: 6,
-    name: "FinanceAssistant",
-    category: "Finance",
-    rating: 4.8,
-    reviews: 87,
-    price: 22000,
-    image: "/placeholder.svg?height=200&width=300",
-    description: "Financial planning and expense tracking for Nigerian businesses",
-    tags: ["Finance", "Accounting", "Planning"],
-    seller: "FinTech Solutions",
-    featured: false,
-  },
-  {
-    id: 7,
-    name: "ChatBot Express",
-    category: "Customer Service",
-    rating: 4.4,
-    reviews: 203,
-    price: 8000,
-    image: "/placeholder.svg?height=200&width=300",
-    description: "Quick setup chatbot for small businesses and startups",
-    tags: ["Chatbot", "Quick Setup", "SME"],
-    seller: "Bot Builders",
-    featured: false,
-  },
-  {
-    id: 8,
-    name: "HR Assistant Pro",
-    category: "Human Resources",
-    rating: 4.6,
-    reviews: 112,
-    price: 20000,
-    image: "/placeholder.svg?height=200&width=300",
-    description: "Streamline HR processes with intelligent automation",
-    tags: ["HR", "Recruitment", "Automation"],
-    seller: "HR Tech Solutions",
-    featured: false,
-  },
-  {
-    id: 9,
-    name: "E-commerce Bot",
-    category: "E-commerce",
-    rating: 4.7,
-    reviews: 178,
-    price: 16000,
-    image: "/placeholder.svg?height=200&width=300",
-    description: "Boost online sales with intelligent product recommendations",
-    tags: ["E-commerce", "Sales", "Recommendations"],
-    seller: "Commerce AI",
-    featured: true,
-  },
-  {
-    id: 10,
-    name: "Legal Assistant",
-    category: "Legal",
-    rating: 4.5,
-    reviews: 89,
-    price: 35000,
-    image: "/placeholder.svg?height=200&width=300",
-    description: "Legal document analysis and contract review automation",
-    tags: ["Legal", "Documents", "Analysis"],
-    seller: "LegalTech NG",
-    featured: false,
-  },
-  {
-    id: 11,
-    name: "Social Media Manager",
-    category: "Marketing",
-    rating: 4.3,
-    reviews: 167,
-    price: 14000,
-    image: "/placeholder.svg?height=200&width=300",
-    description: "Automate social media posting and engagement tracking",
-    tags: ["Social Media", "Automation", "Analytics"],
-    seller: "Social Pro",
-    featured: false,
-  },
-  {
-    id: 12,
-    name: "Inventory Tracker",
-    category: "Operations",
-    rating: 4.6,
-    reviews: 134,
-    price: 19000,
-    image: "/placeholder.svg?height=200&width=300",
-    description: "Smart inventory management and stock level optimization",
-    tags: ["Inventory", "Operations", "Optimization"],
-    seller: "Operations AI",
-    featured: false,
-  },
-]
+
 
 const categories = [
   "All Categories",
@@ -186,39 +29,59 @@ const categories = [
 ]
 
 export default function MarketplacePage() {
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("All Categories")
-  const [sortBy, setSortBy] = useState("featured")
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
-  const [priceRange, setPriceRange] = useState({ min: 0, max: 50000 })
-  const [showFilters, setShowFilters] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All Categories");
+  const [sortBy, setSortBy] = useState("featured");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [priceRange, setPriceRange] = useState({ min: 0, max: 50000 });
+  const [showFilters, setShowFilters] = useState(false);
+  const [agents, setAgents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAgents = async () => {
+      setLoading(true);
+      const { supabase } = await import("@/lib/supabaseClient");
+      const { data, error } = await supabase
+        .from("agents")
+        .select("*")
+        .eq("status", "approved");
+      if (!error && data) {
+        setAgents(data);
+      } else {
+        setAgents([]);
+      }
+      setLoading(false);
+    };
+    fetchAgents();
+  }, []);
 
   const filteredAgents = agents.filter((agent) => {
     const matchesSearch =
-      agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      agent.description.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesCategory = selectedCategory === "All Categories" || agent.category === selectedCategory
-    const matchesPrice = agent.price >= priceRange.min && agent.price <= priceRange.max
-
-    return matchesSearch && matchesCategory && matchesPrice
-  })
+      agent.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      agent.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      agent.short_description?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === "All Categories" || agent.category === selectedCategory;
+    const matchesPrice = Number(agent.price) >= priceRange.min && Number(agent.price) <= priceRange.max;
+    return matchesSearch && matchesCategory && matchesPrice;
+  });
 
   const sortedAgents = [...filteredAgents].sort((a, b) => {
     switch (sortBy) {
       case "featured":
-        return b.featured ? 1 : -1
+        return (b.featured ? 1 : -1) - (a.featured ? 1 : -1);
       case "rating":
-        return b.rating - a.rating
+        return (b.rating || 0) - (a.rating || 0);
       case "price-low":
-        return a.price - b.price
+        return Number(a.price) - Number(b.price);
       case "price-high":
-        return b.price - a.price
+        return Number(b.price) - Number(a.price);
       case "newest":
-        return b.id - a.id
+        return (b.id || 0) - (a.id || 0);
       default:
-        return 0
+        return 0;
     }
-  })
+  });
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -378,39 +241,47 @@ export default function MarketplacePage() {
               <div className="flex justify-between items-center mb-8">
                 <div>
                   <p className="text-slate-600 text-lg">
-                    Showing <span className="font-semibold">{sortedAgents.length}</span> of{" "}
-                    <span className="font-semibold">{agents.length}</span> agents
+                    {loading ? (
+                      <>Loading agents...</>
+                    ) : (
+                      <>
+                        Showing <span className="font-semibold">{sortedAgents.length}</span> of {" "}
+                        <span className="font-semibold">{agents.length}</span> agents
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
 
               {/* Agent Grid/List */}
               <div className={viewMode === "grid" ? "grid grid-cols-2 lg:grid-cols-4 gap-6" : "space-y-6"}>
-                {sortedAgents.map((agent) => (
-                  <AgentCard key={agent.id} agent={agent} viewMode={viewMode} />
-                ))}
-              </div>
-
-              {sortedAgents.length === 0 && (
-                <div className="text-center py-16">
-                  <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Search className="h-8 w-8 text-slate-400" />
+                {loading ? (
+                  <div className="col-span-full text-center py-16 text-lg text-slate-500">Loading...</div>
+                ) : sortedAgents.length > 0 ? (
+                  sortedAgents.map((agent) => (
+                    <AgentCard key={agent.id} agent={agent} viewMode={viewMode} />
+                  ))
+                ) : (
+                  <div className="col-span-full text-center py-16">
+                    <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Search className="h-8 w-8 text-slate-400" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-slate-800 mb-2">No agents found</h3>
+                    <p className="text-slate-500 text-lg mb-6">Try adjusting your search criteria</p>
+                    <Button
+                      variant="outline"
+                      className="bg-transparent"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSelectedCategory("All Categories");
+                        setPriceRange({ min: 0, max: 50000 });
+                      }}
+                    >
+                      Clear Filters
+                    </Button>
                   </div>
-                  <h3 className="text-xl font-semibold text-slate-800 mb-2">No agents found</h3>
-                  <p className="text-slate-500 text-lg mb-6">Try adjusting your search criteria</p>
-                  <Button
-                    variant="outline"
-                    className="bg-transparent"
-                    onClick={() => {
-                      setSearchQuery("")
-                      setSelectedCategory("All Categories")
-                      setPriceRange({ min: 0, max: 50000 })
-                    }}
-                  >
-                    Clear Filters
-                  </Button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>

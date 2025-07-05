@@ -38,153 +38,53 @@ import DashboardLayout from "@/components/dashboard-layout"
 import Link from "next/link"
 import { useState } from "react"
 
-const agents = [
-  {
-    id: 1,
-    name: "CustomerCare Pro",
-    category: "Customer Service",
-    plan: "Professional",
-    status: "Active",
-    usage: 85,
-    lastUsed: "2 hours ago",
-    image: "/placeholder.svg?height=60&width=60",
-    rating: 4.9,
-    monthlyQuota: 500,
-    used: 425,
-    cost: "₦35,000",
-    performance: "+12%",
-    uptime: "99.8%",
-    responses: 1247,
-    satisfaction: 4.8,
-    features: ["24/7 Support", "Multi-language", "Analytics"],
-    description: "Advanced customer service automation with natural language processing",
-  },
-  {
-    id: 2,
-    name: "SalesBot Nigeria",
-    category: "Sales Automation",
-    plan: "Enterprise",
-    status: "Active",
-    usage: 92,
-    lastUsed: "30 minutes ago",
-    image: "/placeholder.svg?height=60&width=60",
-    rating: 4.8,
-    monthlyQuota: 1000,
-    used: 920,
-    cost: "₦75,000",
-    performance: "+18%",
-    uptime: "99.9%",
-    responses: 2156,
-    satisfaction: 4.7,
-    features: ["Lead Generation", "CRM Integration", "Follow-up"],
-    description: "Intelligent sales automation for Nigerian market with local insights",
-  },
-  {
-    id: 3,
-    name: "ContentCreator AI",
-    category: "Content Creation",
-    plan: "Starter",
-    status: "Active",
-    usage: 45,
-    lastUsed: "1 day ago",
-    image: "/placeholder.svg?height=60&width=60",
-    rating: 4.7,
-    monthlyQuota: 200,
-    used: 90,
-    cost: "₦15,000",
-    performance: "-5%",
-    uptime: "98.5%",
-    responses: 456,
-    satisfaction: 4.6,
-    features: ["Blog Posts", "Social Media", "SEO Optimized"],
-    description: "Creative content generation for blogs, social media, and marketing",
-  },
-  {
-    id: 4,
-    name: "DataAnalyzer Pro",
-    category: "Analytics",
-    plan: "Professional",
-    status: "Active",
-    usage: 78,
-    lastUsed: "5 hours ago",
-    image: "/placeholder.svg?height=60&width=60",
-    rating: 4.6,
-    monthlyQuota: 500,
-    used: 390,
-    cost: "₦45,000",
-    performance: "+8%",
-    uptime: "99.2%",
-    responses: 892,
-    satisfaction: 4.5,
-    features: ["Data Visualization", "Predictive Analytics", "Reports"],
-    description: "Advanced data analysis and business intelligence automation",
-  },
-  {
-    id: 5,
-    name: "EmailMarketer",
-    category: "Email Marketing",
-    plan: "Professional",
-    status: "Paused",
-    usage: 0,
-    lastUsed: "1 week ago",
-    image: "/placeholder.svg?height=60&width=60",
-    rating: 4.4,
-    monthlyQuota: 500,
-    used: 0,
-    cost: "₦25,000",
-    performance: "0%",
-    uptime: "N/A",
-    responses: 0,
-    satisfaction: 4.4,
-    features: ["Campaign Automation", "A/B Testing", "Analytics"],
-    description: "Automated email marketing campaigns with advanced targeting",
-  },
-  {
-    id: 6,
-    name: "SocialMedia Manager",
-    category: "Social Media",
-    plan: "Starter",
-    status: "Trial",
-    usage: 25,
-    lastUsed: "3 hours ago",
-    image: "/placeholder.svg?height=60&width=60",
-    rating: 4.5,
-    monthlyQuota: 100,
-    used: 25,
-    cost: "₦0",
-    performance: "+15%",
-    uptime: "99.1%",
-    responses: 125,
-    satisfaction: 4.3,
-    features: ["Multi-platform", "Scheduling", "Engagement"],
-    description: "Manage all your social media platforms from one intelligent dashboard",
-  },
-]
+import { useEffect } from "react"
+
+// Fetch agents from Supabase for the current user
+function useUserAgents(userId) {
+  const [agents, setAgents] = useState([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    if (!userId) return
+    setLoading(true)
+    supabase
+      .from("agents")
+      .select("*")
+      .eq("owner_id", userId)
+      .then(({ data }) => {
+        setAgents(data || [])
+        setLoading(false)
+      })
+  }, [userId])
+  return { agents, loading }
+}
 
 export default function AgentsPage() {
+  // TODO: Replace with real user ID from auth/session
+  const userId = null // e.g. useUser()?.id or from context
+  const { agents, loading } = useUserAgents(userId)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [selectedStatus, setSelectedStatus] = useState("all")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [sortBy, setSortBy] = useState("name")
 
+  // Filter and derive categories/statuses from live agents
   const filteredAgents = agents.filter((agent) => {
     const matchesSearch =
-      agent.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      agent.category.toLowerCase().includes(searchTerm.toLowerCase())
+      agent.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      agent.category?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesCategory = selectedCategory === "all" || agent.category === selectedCategory
-    const matchesStatus = selectedStatus === "all" || agent.status.toLowerCase() === selectedStatus
-
+    const matchesStatus = selectedStatus === "all" || (agent.status || "").toLowerCase() === selectedStatus
     return matchesSearch && matchesCategory && matchesStatus
   })
-
-  const categories = [...new Set(agents.map((agent) => agent.category))]
-  const statuses = [...new Set(agents.map((agent) => agent.status.toLowerCase()))]
-
+  const categories = [...new Set(agents.map((agent) => agent.category).filter(Boolean))]
+  const statuses = [...new Set(agents.map((agent) => (agent.status || "").toLowerCase()).filter(Boolean))]
   const totalAgents = agents.length
   const activeAgents = agents.filter((a) => a.status === "Active").length
-  const totalUsage = agents.reduce((sum, agent) => sum + agent.used, 0)
-  const totalCost = agents.reduce((sum, agent) => sum + Number.parseInt(agent.cost.replace(/[^\d]/g, "")), 0)
+  // These will be 0 if no agents, or you can add logic to sum real fields if present
+  const totalUsage = agents.reduce((sum, agent) => sum + (agent.used || 0), 0)
+  const totalCost = agents.reduce((sum, agent) => sum + Number.parseInt((agent.cost || "0").replace(/[^\d]/g, "")), 0)
 
   return (
     <DashboardLayout>
