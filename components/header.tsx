@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,13 +20,30 @@ export default function Header() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [authMode, setAuthMode] = useState<"login" | "signup">("login")
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const { supabase } = require("@/lib/supabaseClient")
+
+  // Check auth state on mount and listen for changes
+  useEffect(() => {
+    const getSession = async () => {
+      const { data } = await supabase.auth.getSession()
+      setIsLoggedIn(!!data.session)
+    }
+    getSession()
+    const { data: listener } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
+      setIsLoggedIn(!!session)
+    })
+    return () => {
+      listener.subscription.unsubscribe()
+    }
+  }, [])
 
   const handleAuthSuccess = () => {
     setIsLoggedIn(true)
     setIsAuthModalOpen(false)
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
     setIsLoggedIn(false)
   }
 

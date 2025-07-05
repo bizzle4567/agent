@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState } from "react"
+import { getUserProfile } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -29,10 +30,60 @@ export default function AuthModal({ isOpen, onClose, mode, onModeChange, onSucce
     agreeToTerms: false,
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { supabase } = require("@/lib/supabaseClient")
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Handle authentication logic here
-    onSuccess()
+    setError(null)
+    setLoading(true)
+    try {
+      if (mode === "login") {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        })
+        if (error) throw error
+        // Fetch user profile after login
+        if (data?.user?.id) {
+          try {
+            const profile = await getUserProfile(data.user.id)
+            // You can store profile in context or pass to parent here
+            // Example: onSuccess(profile)
+          } catch (profileError: any) {
+            setError(profileError.message || "Failed to fetch profile")
+          }
+        }
+        onSuccess()
+      } else {
+        if (formData.password !== formData.confirmPassword) {
+          setError("Passwords do not match")
+          setLoading(false)
+          return
+        }
+        const { data, error } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: { data: { full_name: formData.fullName } },
+        })
+        if (error) throw error
+        // Optionally fetch profile after signup
+        if (data?.user?.id) {
+          try {
+            const profile = await getUserProfile(data.user.id)
+            // You can store profile in context or pass to parent here
+          } catch (profileError: any) {
+            setError(profileError.message || "Failed to fetch profile")
+          }
+        }
+        onSuccess()
+      }
+    } catch (err: any) {
+      setError(err.message || "Authentication failed")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleInputChange = (field: string, value: string | boolean) => {
@@ -154,12 +205,15 @@ export default function AuthModal({ isOpen, onClose, mode, onModeChange, onSucce
             </div>
           )}
 
+          {error && (
+            <div className="text-red-600 text-sm text-center">{error}</div>
+          )}
           <Button
             type="submit"
             className="w-full bg-blue-600 hover:bg-blue-700"
-            disabled={mode === "signup" && !formData.agreeToTerms}
+            disabled={loading || (mode === "signup" && !formData.agreeToTerms)}
           >
-            {mode === "login" ? "Sign In" : "Create Account"}
+            {loading ? (mode === "login" ? "Signing In..." : "Creating Account...") : (mode === "login" ? "Sign In" : "Create Account")}
           </Button>
         </form>
 
